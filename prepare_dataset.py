@@ -9,6 +9,8 @@ import sys
 
 from ftfy import fix_text
 
+import tflex_utils
+
 parser = argparse.ArgumentParser(
     description='Use FTFY to prepare a dataset for training.',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -20,8 +22,17 @@ def main():
     out = sys.stdout if args.outfile == '-' else open(args.outfile, "w")
     i = 0
     with open(args.infile) as f:
-      for line in f:
+      for i, line in tflex_utils.for_each_line(f):
         fixed = fix_text(line)
+        # replace unicode … with ... which ftfy doesn't do by default
+        # NOTE: this departs from openai's convention of calling
+        # ftfy.fix_text() with default arguments. In particular,
+        # OpenAI's GPT-2 models do generate unicode ellipses.
+        # Nonetheless, we replace unicdoe ellipses with ... to
+        # increase the chances of semantic understanding.
+        fixed = fixed.replace(' …', '...') # first pass: convert "foo  …" to "foo..."
+        #fixed = fixed.replace(' …', '...') # second pass: convert "foo …" to "foo..."
+        fixed = fixed.replace('…', '...') # final pass: convert "foo…" to "foo..."
         out.write(fixed)
         i += 1
         if i % 100 == 0:
