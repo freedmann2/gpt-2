@@ -119,6 +119,7 @@ class Encoder:
 
 try:
   from tokenizers import Tokenizer, models, pre_tokenizers, decoders
+  from transformers import GPT2TokenizerFast
   import sys
   use_high_speed_tokenizer = True
   sys.stderr.write('Using high-speed tokenizer\n')
@@ -127,40 +128,66 @@ except:
 
 class HighSpeedTokenizer(object):
   def __init__(self, vocab_path, bpe_merges_path):
-    tokenizer = Tokenizer(models.BPE.from_files(vocab_path, bpe_merges_path))
-    # Use the byte level
-    add_prefix_spaces = False # Whether to automatically prefix the sequences with a space if none found
-    tokenizer.with_pre_tokenizer(pre_tokenizers.ByteLevel.new(add_prefix_spaces))
-    tokenizer.with_decoder(decoders.ByteLevel.new())
-    # Setup truncation if needed
-    truncate = False
-    max_length = 1024
-    if truncate:
-      stride = 0
-      strategy = 'longest_first' # Can also be `only_first` or `only_second`
-      tokenizer.with_truncation(max_length, stride, strategy)
-    # Setup padding if needed
-    padding = False
-    # Whether to always pad to max_length. If this is false, we will pad to the
-    # longest sequence in the batch.
-    pad_to_max_length = False
-    padding_side = "right" # Can also be "left"
-    pad_token_id = 0
-    pad_token_type_id = 0
-    pad_token = "[PAD]"
-    if padding:
-      tokenizer.with_padding(
-        max_length if pad_to_max_length else None,
-        padding_side,
-        pad_token_id,
-        pad_token_type_id,
-        pad_token
-      )
+    if vocab_path in [
+        'models/117M/encoder.json',
+        'models/345M/encoder.json',
+        'models/774M/encoder.json',
+        'models/1558M/encoder.json',
+      ] and bpe_merges_path in [
+        'models/117M/vocab.bpe',
+        'models/345M/vocab.bpe',
+        'models/774M/vocab.bpe',
+        'models/1558M/vocab.bpe',
+      ]:
+      sys.stderr.write('Using pretrained GPT2 tokenizer\n')
+      sys.stderr.flush()
+      tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
+    else:
+      tokenizer = Tokenizer(BPE(vocab_path, bpe_merges_path))
+      # Use the byte level
+      add_prefix_spaces = False # Whether to automatically prefix the sequences with a space if none found
+      tokenizer.with_pre_tokenizer(pre_tokenizers.ByteLevel.new(add_prefix_spaces))
+      tokenizer.with_decoder(decoders.ByteLevel.new())
+      # Setup truncation if needed
+      truncate = False
+      max_length = 1024
+      if truncate:
+        stride = 0
+        strategy = 'longest_first' # Can also be `only_first` or `only_second`
+        tokenizer.with_truncation(max_length, stride, strategy)
+      # Setup padding if needed
+      padding = False
+      # Whether to always pad to max_length. If this is false, we will pad to the
+      # longest sequence in the batch.
+      pad_to_max_length = False
+      padding_side = "right" # Can also be "left"
+      pad_token_id = 0
+      pad_token_type_id = 0
+      pad_token = "[PAD]"
+      if padding:
+        tokenizer.with_padding(
+          max_length if pad_to_max_length else None,
+          padding_side,
+          pad_token_id,
+          pad_token_type_id,
+          pad_token
+        )
     self.tokenizer = tokenizer
     with open(vocab_path) as f:
       self.encoder = json.load(f)
     if '<|endoftext|>' not in self.encoder:
       raise ValueError('Could not determine <|endoftext|> token in encoder file {!r}'.format(vocab_path))
+
+
+  # GPT2Tokenizer and Tokenizer has different ways of fetching token ids
+  def tokenize(self, text, encoder=None):
+    if encoder is None:
+      encoder = self.tokenizer
+    result = encoder.encode(text)
+    if isinstance(result, list):
+        return result
+    return result.ids
+
 
   def encode(self, text):
     tokens = []
@@ -178,10 +205,10 @@ class HighSpeedTokenizer(object):
           tokens.append(mid)
         else:
           mid = self.encoder['<|endoftext|>']
-        encoding = self.tokenizer.encode(part)
-        tokens.extend(encoding.ids)
+        encoding = self.tokenize(part)
+        tokens.extend(encoding)
     if text.endswith('\n'):
-      tokens.extend(self.tokenizer.encode('\n').ids)
+      tokens.extend(self.tokenize('\n'))
     return tokens
 
   def decode(self, tokens):
