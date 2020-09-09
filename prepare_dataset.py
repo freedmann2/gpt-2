@@ -49,8 +49,8 @@ def main():
     with open(args.infile, encoding='utf-8') as f:
       for i, line in tflex_utils.for_each_line(f):
         lines.append(line)
-        if len(lines) > 1000:
-          for line in tqdm.tqdm(mapper(fix, lines), total=len(lines)):
+        if len(lines) > 10000:
+          for line in mapper(fix, lines):
             out.write(line)
           lines = []
         i += 1
