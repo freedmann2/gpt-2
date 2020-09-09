@@ -10,6 +10,7 @@ import sys
 from ftfy import fix_text
 
 import tflex_utils
+import tqdm
 
 from multiprocessing import Pool, cpu_count
 
@@ -33,6 +34,10 @@ def fix(line):
   fixed = fixed.replace('…', '...') # final pass: convert "foo…" to "foo..."
   return fixed
 
+def each_lines(f):
+  for i, line in tflex_utils.for_each_line(f):
+    yield line
+
 def main():
     args = parser.parse_args()
     out = sys.stdout if args.outfile == '-' else open(args.outfile, "w")
@@ -40,14 +45,19 @@ def main():
     nproc = args.nproc or cpu_count()
     pool = Pool(processes=nproc) if nproc > 1 else None
     mapper = pool.imap if nproc > 1 else map
+    lines = []
     with open(args.infile, encoding='utf-8') as f:
       for i, line in tflex_utils.for_each_line(f):
-        fixed = list(mapper(fix, [line]))
-        fixed = fixed[0]
-        out.write(fixed)
+        lines.append(line)
+        if len(lines) > 1000:
+          for line in tqdm.tqdm(mapper(fix, lines), total=len(lines)):
+            out.write(line)
+          lines = []
         i += 1
         if i % 100 == 0:
           out.flush()
+      for line in tqdm.tqdm(mapper(fix, lines), total=len(lines)):
+        out.write(line)
 
 if __name__ == '__main__':
     main()
