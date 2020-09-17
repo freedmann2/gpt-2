@@ -7,11 +7,11 @@ import tensorflow as tf
 
 
 ckpt = tf.train.load_checkpoint('models/117M/model.ckpt')
-import pdb; pdb.set_trace()
 
 
 wpe = ckpt.get_tensor('model/wpe')
 wte = ckpt.get_tensor('model/wte')
+import pdb; pdb.set_trace()
 
 # e.g.
 
