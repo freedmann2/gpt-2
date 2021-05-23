@@ -201,6 +201,35 @@ def positions_for(tokens, past_length):
     return expand_tile(past_length + tf.range(nsteps), batch_size)
 
 
+def ff(x, *, hparams):
+  nx = shape_list(x)[-1]
+  h = mlp(x, 'mlp', nx*4, hparams=hparams)
+  return h
+
+
+def fft(x):
+  return tf.signal.dct(x)
+
+
+def concat(xs, axis):
+  return tf.concat(xs, axis=axis)
+
+def attend(y, x, nx, *, past, hparams):
+  #*start, nx = shape_list(x)
+  #x = norm(x, 'ln_1', hparams=hparams)
+  a, present = attn(x, 'attn', nx, past=past, hparams=hparams)
+  return a, present
+
+def extended_self_attention_layer(x, *, past, hparams):
+  *start, nx = shape_list(x)
+  y = fft(x)
+  z = concat([x, y], axis=-1)
+  #import pdb; pdb.set_trace()
+  h, present = attend(y, z, nx=nx, past=past, hparams=hparams) # Attend to the concatenation of both of the previous layers.
+  return h, present
+
+
+
 def model(hparams, X, past=None, scope='model', reuse=tf.AUTO_REUSE):
     # import pdb; pdb.set_trace()
     dtype = hparams.dtype if hparams else tf.float32
@@ -219,11 +248,26 @@ def model(hparams, X, past=None, scope='model', reuse=tf.AUTO_REUSE):
         presents = []
         pasts = tf.unstack(past, axis=1) if past is not None else [None] * hparams.n_layer
         assert len(pasts) == hparams.n_layer
-        for layer, past in enumerate(pasts):
-            h, present = block(h, 'h%d' % layer, past=past, hparams=hparams)
-            if layer == 10:
-                tf.add_to_collection('checkpoints', h)
-            presents.append(present)
+        if True:
+            y = None
+            for layer, past in enumerate(pasts):
+              scope = 'h%d' % layer
+              with tf.variable_scope(scope, dtype=dtype):
+                with tf.variable_scope('b0', dtype=dtype):
+                  new_y0, present = extended_self_attention_layer(h, past=past, hparams=hparams)
+                  new_y = ff(new_y0, hparams=hparams)
+                  if y is not None:
+                    y = new_y + y
+                  else:
+                    y = new_y
+                with tf.variable_scope('b1', dtype=dtype):
+                  y0, present = extended_self_attention_layer(y, past=past, hparams=hparams)
+                  h = ff(y0, hparams=hparams) + h
+                presents.append(present)
+        else:
+            for layer, past in enumerate(pasts):
+                h, present = block(h, 'h%d' % layer, past=past, hparams=hparams)
+                presents.append(present)
         results['present'] = tf.stack(presents, axis=1)
         h = norm(h, 'ln_f', hparams=hparams)
 

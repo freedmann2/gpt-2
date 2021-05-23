@@ -58,7 +58,8 @@ def sample_sequence(*, hparams, length, start_token=None, batch_size=None, conte
         context = tf.fill([batch_size, 1], start_token)
 
     def step(hparams, tokens, past=None):
-        lm_output = model.model(hparams=hparams, X=tokens, past=past, reuse=tf.AUTO_REUSE)
+        #lm_output = model.model(hparams=hparams, X=tokens, past=past, reuse=tf.AUTO_REUSE)
+        lm_output = model.model(hparams=hparams, X=tokens, past=None, reuse=tf.AUTO_REUSE)
         if hparams.dtype != tf.float32:
             lm_output["logits"] = tf.cast(lm_output["logits"], tf.float32)
 

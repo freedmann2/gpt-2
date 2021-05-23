@@ -209,8 +209,10 @@ def main():
     if args.disable_layout_optimizer:
         config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
     with tflex.Session(config=config, init_tpu=args.init_tpu) as sess:
-        context = tf.placeholder(tf.int32, [args.batch_size, None])
+        #context = tf.placeholder(tf.int32, [args.batch_size, None])
+        context = tf.placeholder(tf.int32, [args.batch_size, args.sample_ctx])
         context_in = randomize(context, hparams, args.noise)
+        context_sample = tf.placeholder(tf.int32, [args.batch_size, None])
         output = model.model(hparams=hparams, X=context_in)
         loss = tf.reduce_mean(
             tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -228,7 +230,7 @@ def main():
         tf_sample = sample.sample_sequence(
             hparams=hparams,
             length=args.sample_length,
-            context=context,
+            context=context_sample,
             batch_size=args.batch_size,
             temperature=1.0,
             top_k=args.top_k,
@@ -410,7 +412,7 @@ def main():
             while index < args.sample_num:
                 out = sess.run(
                     tf_sample,
-                    feed_dict={context: args.batch_size * [context_tokens]})
+                    feed_dict={context_sample: args.batch_size * [context_tokens]})
                 for i in range(min(args.sample_num - index, args.batch_size)):
                     text = enc.decode(out[i])
                     text = '======== SAMPLE {} ========\n{}\n'.format(
@@ -506,7 +508,7 @@ def main():
                     (v_loss, v_summary) = sess.run((opt_apply, summaries))
                 else:
                     batch = sample_batch()
-                    say('Running opt_apply...')
+                    #say('Running opt_apply...')
                     (_, v_loss, v_summary) = sess.run(
                         (opt_apply, loss, summaries),
                         feed_dict={context: batch})
