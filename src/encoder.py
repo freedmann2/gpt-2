@@ -108,6 +108,7 @@ class Encoder:
         return text
 
 try:
+  raise ValueError("Don't use tokenizer for now")
   from tokenizers import Tokenizer, models, pre_tokenizers, decoders
   use_high_speed_tokenizer = True
   print('Using high-speed tokenizer')

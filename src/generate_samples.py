@@ -8,7 +8,7 @@ sys.path += [os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file
 import fire
 import json
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 import model, sample, encoder
 

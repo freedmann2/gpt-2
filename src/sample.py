@@ -1,4 +1,4 @@
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 import model
 
@@ -77,14 +77,15 @@ def sample_sequence(*, hparams, length, start_token=None, batch_size=None, conte
         context_output = step(hparams, context[:, :-1])
 
         def body(past, prev, output):
+            # import pdb; pdb.set_trace()
             next_outputs = step(hparams, prev[:, tf.newaxis], past=past)
             logits = next_outputs['logits'][:, -1, :]  / tf.to_float(temperature)
-            if penalize > 0.0:
-                logits = penalize_used(logits, output, penalize=penalize)
-            if top_p > 0.0:
-                logits = top_p_logits(logits, p=top_p, epsilon=epsilon)
-            else:
-                logits = top_k_logits(logits, k=top_k, epsilon=epsilon)
+            # if penalize > 0.0:
+            #     logits = penalize_used(logits, output, penalize=penalize)
+            # if top_p > 0.0:
+            #     logits = top_p_logits(logits, p=top_p, epsilon=epsilon)
+            # else:
+            #     logits = top_k_logits(logits, k=top_k, epsilon=epsilon)
             samples = tf.multinomial(logits, num_samples=1, output_dtype=tf.int32)
             return [
                 tf.concat([past, next_outputs['presents']], axis=-2),

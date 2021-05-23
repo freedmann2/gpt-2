@@ -8,7 +8,8 @@ sys.path += [os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src')]
 import argparse
 import json
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+import tensorflow.compat.v2 as tf2
 import time
 import tqdm
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -17,7 +18,6 @@ from tensorflow.python import pywrap_tensorflow
 import model, sample, encoder
 from load_dataset import load_dataset, Sampler, TextSampler
 from accumulate import AccumulatingOptimizer
-import memory_saving_gradients
 from glob import glob
 import re
 import tflex
@@ -143,6 +143,19 @@ def randomize(context, hparams, p):
 
 
 def main():
+
+    tf.enable_v2_behavior()
+
+    from tensorflow.python.framework.ops import disable_eager_execution
+    disable_eager_execution()
+
+    try:
+        from tensorflow.python.compiler.mlcompute import mlcompute
+        mlcompute.set_mlc_device(device_name='gpu')
+        print("mlcompute.set_mlc_device(device_name='gpu')")
+    except:
+        pass
+      
     args = parser.parse_args()
     enc = encoder.get_encoder(args.model_name)
     hparams = model.default_hparams()
@@ -175,7 +188,10 @@ def main():
         hparams.n_layer=args.n_layer
 
     if args.sample_length < 0:
-        args.sample_length = hparams.n_ctx - 1
+        if args.sample_ctx > 0:
+            args.sample_length = args.sample_ctx - 1
+        else:
+            args.sample_length = hparams.n_ctx - 1
     if args.sample_length > hparams.n_ctx:
         raise ValueError(
             "Can't get samples longer than window size: %s" % hparams.n_ctx)
@@ -296,6 +312,7 @@ def main():
             summary_loss = tf.summary.scalar('loss', opt_apply)
         else:
             if args.memory_saving_gradients:
+                import memory_saving_gradients
                 opt_grads = memory_saving_gradients.gradients(loss, train_vars)
             else:
                 opt_grads = tf.gradients(loss, train_vars)

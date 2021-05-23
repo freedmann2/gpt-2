@@ -1,18 +1,19 @@
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import numpy as np
 from glob import glob
 import os
 import sys
 import re
-from tensorflow.python import pywrap_tensorflow
+#from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.training import py_checkpoint_reader
 import tqdm
 import h5py
 import shutil
 import tempfile
 import math
 
-from tensorflow.contrib import tpu
-from tensorflow.contrib.cluster_resolver import TPUClusterResolver
+from tensorflow.python.tpu import tpu
+from tensorflow.compat.v1.distribute.cluster_resolver import TPUClusterResolver
 
 def get_tpu_addr(tpu_name=None):
     # Get the TPU's location
@@ -108,7 +109,7 @@ def assign_values(variables, values, session=None):
 
 def load_snapshot(ckpt, session=None, var_list=None, reshape=False):
   session = session or tf.get_default_session()
-  reader = pywrap_tensorflow.NewCheckpointReader(ckpt)
+  reader = py_checkpoint_reader.NewCheckpointReader(ckpt)
   vs = var_list or tf.trainable_variables()
   for variables in tqdm.tqdm(list(split_by_params(vs))):
     values = [value for variable, value in grab_values(variables, reader, reshape=reshape)]
