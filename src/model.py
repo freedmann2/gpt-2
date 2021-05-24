@@ -203,6 +203,7 @@ def positions_for(tokens, past_length):
 
 def ff(x, *, hparams):
   nx = shape_list(x)[-1]
+  x = norm(x, 'ln_2', hparams=hparams)
   h = mlp(x, 'mlp', nx*4, hparams=hparams)
   return h
 
@@ -216,12 +217,13 @@ def concat(xs, axis):
 
 def attend(y, x, nx, *, past, hparams):
   #*start, nx = shape_list(x)
-  #x = norm(x, 'ln_1', hparams=hparams)
+  # x = norm(x, 'ln_1', hparams=hparams)
   a, present = attn(x, 'attn', nx, past=past, hparams=hparams)
   return a, present
 
 def extended_self_attention_layer(x, *, past, hparams):
   *start, nx = shape_list(x)
+  x = norm(x, 'ln_1', hparams=hparams)
   y = fft(x)
   z = concat([x, y], axis=-1)
   #import pdb; pdb.set_trace()
