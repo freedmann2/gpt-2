@@ -52,9 +52,11 @@ def get_variable(name):
 
 def init_variable(name, shape, **kws):
     v = get_variable(name)
-    if v is not None:
-        return v
-    return tf.get_variable(name, shape, **kws)
+    if v is None:
+        v = tf.get_variable(name, shape, **kws)
+    v = graph_spectral_norm(v)
+    return v
+
 
 def shape_list(x):
     """Deal with dynamic shape in tensorflow cleanly."""
@@ -229,6 +231,100 @@ def extended_self_attention_layer(x, *, past, hparams):
   #import pdb; pdb.set_trace()
   h, present = attend(y, z, nx=nx, past=past, hparams=hparams) # Attend to the concatenation of both of the previous layers.
   return h, present
+
+
+def graph_name(name):
+  name = name.split(':')[0]
+  #name = name.split('/kernel')[0]
+  return name
+
+scalars = []
+
+
+def scalar(name, val, init=None):
+  scalars.append(tf.summary.scalar(name, val))
+
+
+def graph_spectral_norm(w, init=None):
+  # if tpu_summaries.TpuSummaries.inst is None:
+  #   return w
+  name = graph_name(w.name)
+  # if name is not None and not tpu_summaries.TpuSummaries.inst.has(name):
+  if name is not None:
+    tf.logging.info("[ops] Graphing name=%s (was %s), %s", name, w.name, repr(w))
+    #w1, norm = spectral_norm(w)
+    norm = spectral_norm_stateless(w)
+    scalar(name, norm, init=init)
+  else:
+    tf.logging.info("[ops] Not graphing %s", w.name)
+  return w
+
+
+def spectral_norm_stateless(inputs, epsilon=1e-12, singular_value="right",
+                  power_iteration_rounds=5):
+  """Performs Spectral Normalization on a weight tensor.
+
+  Details of why this is helpful for GAN's can be found in "Spectral
+  Normalization for Generative Adversarial Networks", Miyato T. et al., 2018.
+  [https://arxiv.org/abs/1802.05957].
+
+  Args:
+    inputs: The weight tensor to normalize.
+    epsilon: Epsilon for L2 normalization.
+    singular_value: Which first singular value to store (left or right). Use
+      "auto" to automatically choose the one that has fewer dimensions.
+
+  Returns:
+    The normalized weight tensor.
+  """
+  if len(inputs.shape) <= 0:
+    logging.info("[ops] spectral norm of a float is itself; returning as-is. name=%s %s", inputs.name, repr(inputs))
+    return inputs
+
+  # The paper says to flatten convnet kernel weights from (C_out, C_in, KH, KW)
+  # to (C_out, C_in * KH * KW). Our Conv2D kernel shape is (KH, KW, C_in, C_out)
+  # so it should be reshaped to (KH * KW * C_in, C_out), and similarly for other
+  # layers that put output channels as last dimension. This implies that w
+  # here is equivalent to w.T in the paper.
+  w = tf.reshape(inputs, (-1, inputs.shape[-1]))
+
+  # Choose whether to persist the first left or first right singular vector.
+  # As the underlying matrix is PSD, this should be equivalent, but in practice
+  # the shape of the persisted vector is different. Here one can choose whether
+  # to maintain the left or right one, or pick the one which has the smaller
+  # dimension. We use the same variable for the singular vector if we switch
+  # from normal weights to EMA weights.
+  if singular_value == "auto":
+    singular_value = "left" if w.shape[0] <= w.shape[1] else "right"
+  u_shape = (w.shape[0], 1) if singular_value == "left" else (1, w.shape[-1])
+  u = tf.random.normal(shape=u_shape, name='u0')
+
+  # Use power iteration method to approximate the spectral norm.
+  # The authors suggest that one round of power iteration was sufficient in the
+  # actual experiment to achieve satisfactory performance.
+  for _ in range(power_iteration_rounds):
+    if singular_value == "left":
+      # `v` approximates the first right singular vector of matrix `w`.
+      v = tf.math.l2_normalize(
+          tf.matmul(tf.transpose(w), u), axis=None, epsilon=epsilon)
+      u = tf.math.l2_normalize(tf.matmul(w, v), axis=None, epsilon=epsilon)
+    else:
+      v = tf.math.l2_normalize(tf.matmul(u, w, transpose_b=True),
+                               epsilon=epsilon)
+      u = tf.math.l2_normalize(tf.matmul(v, w), epsilon=epsilon)
+
+  # The authors of SN-GAN chose to stop gradient propagating through u and v
+  # and we maintain that option.
+  u = tf.stop_gradient(u)
+  v = tf.stop_gradient(v)
+
+  if singular_value == "left":
+    norm_value = tf.matmul(tf.matmul(tf.transpose(u), w), v)
+  else:
+    norm_value = tf.matmul(tf.matmul(v, w), u, transpose_b=True)
+  norm_value.shape.assert_is_fully_defined()
+  norm_value.shape.assert_is_compatible_with([1, 1])
+  return norm_value[0][0]
 
 
 
