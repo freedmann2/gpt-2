@@ -85,7 +85,12 @@ def interact_model(
     if step > length:
         raise ValueError("Can't get samples longer than length: %s" % length)
 
-    with tflex.Session(graph=tf.Graph()) as sess:
+    tf.enable_resource_variables()
+    def prn(x):
+      print(x)
+      #import pdb; pdb.set_trace()
+      return x
+    with tflex.Session() as sess, tf.device( prn(sess.list_devices()[-1].name) ): #, tf.device('GPU:0'):
         context = tf.placeholder(tf.int32, [batch_size, None])
         np.random.seed(seed)
         tf.set_random_seed(seed)

@@ -145,16 +145,17 @@ def randomize(context, hparams, p):
 def main():
 
     tf.enable_v2_behavior()
+    tf.enable_resource_variables()
 
     from tensorflow.python.framework.ops import disable_eager_execution
     disable_eager_execution()
 
-    try:
-        from tensorflow.python.compiler.mlcompute import mlcompute
-        mlcompute.set_mlc_device(device_name='gpu')
-        print("mlcompute.set_mlc_device(device_name='gpu')")
-    except:
-        pass
+    # try:
+    #     from tensorflow.python.compiler.mlcompute import mlcompute
+    #     mlcompute.set_mlc_device(device_name='gpu')
+    #     print("mlcompute.set_mlc_device(device_name='gpu')")
+    # except:
+    #     pass
       
     args = parser.parse_args()
     enc = encoder.get_encoder(args.model_name)
@@ -192,6 +193,7 @@ def main():
             args.sample_length = args.sample_ctx - 1
         else:
             args.sample_length = hparams.n_ctx - 1
+        args.sample_length = min(args.sample_length, 63)
     if args.sample_length > hparams.n_ctx:
         raise ValueError(
             "Can't get samples longer than window size: %s" % hparams.n_ctx)
@@ -203,12 +205,15 @@ def main():
         if args.optimizer == 'adam':
             args.only_train_transformer_layers = True
 
-    config = tf.ConfigProto()
+    config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=True)
     if args.allow_growth:
         config.gpu_options.allow_growth = True
     if args.disable_layout_optimizer:
         config.graph_options.rewrite_options.layout_optimizer = rewriter_config_pb2.RewriterConfig.OFF
-    with tflex.Session(config=config, init_tpu=args.init_tpu) as sess:
+    def prn(x, *args):
+      print(x, *args)
+      return x
+    with tflex.Session(config=config, init_tpu=args.init_tpu) as sess, tf.device(prn(sess.list_devices()[-1].name, 'TKTK')):
         context = tf.placeholder(tf.int32, [args.batch_size, None])
         context_in = randomize(context, hparams, args.noise)
         output = model.model(hparams=hparams, X=context_in)
@@ -224,16 +229,6 @@ def main():
                     labels=val_context[:, 1:], logits=val_output['logits'][:, :-1]))
             val_loss_summary = tf.summary.scalar('val_loss', val_loss)
 
-
-        tf_sample = sample.sample_sequence(
-            hparams=hparams,
-            length=args.sample_length,
-            context=context,
-            batch_size=args.batch_size,
-            temperature=1.0,
-            top_k=args.top_k,
-            top_p=args.top_p,
-            epsilon=epsilon)
 
         all_vars = [v for v in tf.trainable_variables() if 'model' in v.name]
         train_vars = [v for v in all_vars if '/h' in v.name] if args.only_train_transformer_layers else all_vars
@@ -401,12 +396,26 @@ def main():
             with open(counter_path, 'w') as fp:
                 fp.write(str(counter) + '\n')
 
+        tf_sample = None
+
         @tflex.register_command
         def generate_samples():
-            print('Generating samples...')
+            print('Generating samples of length %d...' % args.sample_length)
             context_tokens = data_sampler.sample(1)
             all_text = []
             index = 0
+            nonlocal tf_sample
+            if tf_sample is None:
+              tf_sample = sample.sample_sequence(
+                  hparams=hparams,
+                  length=args.sample_length,
+                  context=context,
+                  batch_size=args.batch_size,
+                  temperature=0.7,
+                  top_k=args.top_k,
+                  top_p=args.top_p,
+                  epsilon=epsilon)
+
             while index < args.sample_num:
                 out = sess.run(
                     tf_sample,

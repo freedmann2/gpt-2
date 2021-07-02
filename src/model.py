@@ -50,11 +50,11 @@ def get_variable(name):
         if x.name.startswith(name + ':'):
             return x
 
-def init_variable(name, shape, **kws):
+def init_variable(name, shape, use_resource=True, **kws):
     v = get_variable(name)
     if v is not None:
         return v
-    return tf.get_variable(name, shape, **kws)
+    return tf.get_variable(name, shape, use_resource=use_resource, **kws)
 
 def shape_list(x):
     """Deal with dynamic shape in tensorflow cleanly."""
